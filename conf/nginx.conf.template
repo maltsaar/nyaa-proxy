@@ -1,0 +1,97 @@
+load_module modules/ngx_http_acme_module.so;
+
+events {}
+
+http {
+    access_log /dev/stdout;
+    error_log /dev/stderr;
+
+    server_tokens off;
+
+    upstream caddy_backend {
+        server caddy:8443;
+    }
+
+    resolver 8.8.8.8;
+
+    acme_issuer letsencrypt {
+        uri https://acme-staging-v02.api.letsencrypt.org/directory;
+        state_path /etc/nginx/acme-state;
+        accept_terms_of_service;
+    }
+
+    acme_shared_zone zone=ngx_acme_shared:1M;
+
+    server {
+        listen 80;
+        server_name ${DOMAIN_NAME};
+
+        location ^~ /.well-known/acme-challenge/ {}
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
+
+    }
+
+    server {
+        listen 443 ssl;
+        server_name ${DOMAIN_NAME};
+
+        acme_certificate letsencrypt;
+
+        ssl_certificate $acme_certificate;
+        ssl_certificate_key $acme_certificate_key;
+
+        location = /static/favicon.png {
+            alias /etc/nginx/static/favicon.png;
+            access_log off;
+            log_not_found off;
+        }
+
+        location = /static-assets/style-override.css {
+            alias /etc/nginx/static/style-override.css;
+            access_log off;
+            log_not_found off;
+            default_type text/css;
+        }
+
+        location ~ ^/(login|upload)$ {
+            return 403 'This endpoint has been disabled';
+        }
+  
+        location / {
+            if ($arg_page = "rss") {
+                return 403 'This endpoint has been disabled';
+            }
+
+            proxy_pass https://caddy_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            proxy_ssl_verify off;
+            proxy_ssl_server_name on;
+            proxy_ssl_name $host;
+            
+            # add banner
+            sub_filter '<body>' '<body><div style="background: #825bc2; color: #F8F0E3; padding:10px; text-align:center; font-weight:bold;">This is a live unofficial mirror of <a style="color: #b8cdff; text-decoration: underline;" href="https://nyaa.si">nyaa</a>.</div>';
+
+            # remove login
+            sub_filter '<ul class="nav navbar-nav navbar-right">' '<ul style="display: none;" class="nav navbar-nav navbar-right">';
+            # remove upload
+            sub_filter '<a href="/upload">Upload</a>' '';
+            # remove rss
+            sub_filter '<a href="/?page=rss">RSS</a>' '';
+            # remove sukebei
+            sub_filter '<a href="//sukebei.nyaa.si">Fap</a>' '';
+            # add override stylesheet
+            sub_filter '<head>' '<head><link rel="stylesheet" href="/static-assets/style-override.css">';
+            # add github link
+            sub_filter '</footer>' '<p>Mirror source code available on <a href="https://github.com/maltsaar/nyaa-proxy">GitHub</a></p></footer>';
+
+            sub_filter_once on;
+        }
+    }
+}
