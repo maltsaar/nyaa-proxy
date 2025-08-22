@@ -15,7 +15,7 @@ http {
     resolver 8.8.8.8;
 
     acme_issuer letsencrypt {
-        uri https://acme-staging-v02.api.letsencrypt.org/directory;
+        uri https://acme-v02.api.letsencrypt.org/directory;
         state_path /etc/nginx/acme-state;
         accept_terms_of_service;
     }
