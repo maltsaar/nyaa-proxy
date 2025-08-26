@@ -8,10 +8,6 @@ http {
 
     server_tokens off;
 
-    upstream caddy_backend {
-        server caddy:8443;
-    }
-
     resolver 8.8.8.8;
 
     acme_issuer letsencrypt {
@@ -21,6 +17,9 @@ http {
     }
 
     acme_shared_zone zone=ngx_acme_shared:1M;
+
+    proxy_cache_path /etc/nginx/cache levels=1:2 keys_zone=cache_zone:100m inactive=60m use_temp_path=off max_size=1g;
+    proxy_cache_key "$scheme$proxy_host$request_uri";
 
     server {
         listen 80;
@@ -34,6 +33,11 @@ http {
 
     }
 
+    upstream anubis {
+        server unix:/run/nginx/sockets/anubis.sock;
+    }
+
+    # TLS terminator
     server {
         listen 443 ssl;
         server_name ${DOMAIN_NAME};
@@ -42,6 +46,22 @@ http {
 
         ssl_certificate $acme_certificate;
         ssl_certificate_key $acme_certificate_key;
+
+        location / {
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_pass http://anubis;
+            proxy_ssl_verify off;
+        }
+    }
+
+    upstream caddy_backend {
+        server ${CADDY_1}:443;
+        server ${CADDY_2}:443;
+    }
+
+    server {
+        listen unix:/run/nginx/sockets/nginx.sock;
 
         location = /static/favicon.png {
             alias /etc/nginx/static/favicon.png;
@@ -59,7 +79,7 @@ http {
         location ~ ^/(login|upload)$ {
             return 403 'This endpoint has been disabled';
         }
-  
+
         location / {
             if ($arg_page = "rss") {
                 return 403 'This endpoint has been disabled';
@@ -70,10 +90,25 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            
+
+            # 504 is common with nyaa
+            # Avoid this by trying with another server
+            proxy_next_upstream error timeout http_502 http_503 http_504;
+            proxy_next_upstream_tries 3;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 5s;
+            proxy_send_timeout 5s;
+
             proxy_ssl_verify off;
-            proxy_ssl_server_name on;
-            proxy_ssl_name $host;
+
+            # caching
+            proxy_cache cache_zone;
+            proxy_cache_valid 200 301 302 30m;
+            proxy_cache_valid 404 5m;
+            # skip caching with ?nocache=1
+            # proxy_cache_bypass $arg_nocache;
+            proxy_ignore_headers Cache-Control Expires Set-Cookie;
+            add_header X-Cache-Status $upstream_cache_status;
             
             # add banner
             sub_filter '<body>' '<body><div style="background: #825bc2; color: #F8F0E3; padding:10px; text-align:center; font-weight:bold;">This is a live unofficial mirror of <a style="color: #b8cdff; text-decoration: underline;" href="https://nyaa.si">nyaa</a>.</div>';
@@ -83,7 +118,7 @@ http {
             # remove upload
             sub_filter '<a href="/upload">Upload</a>' '';
             # remove rss
-            sub_filter '<a href="/?page=rss">RSS</a>' '';
+            sub_filter '<li><a href="/?page=rss' '<li style="display: none;"><a href="/?page=rss';
             # remove sukebei
             sub_filter '<a href="//sukebei.nyaa.si">Fap</a>' '';
             # add override stylesheet

@@ -1,0 +1,25 @@
+:443 {
+    @allowed_ip remote_ip {$MASTER_IP}
+
+    tls /etc/caddy/cert.pem /etc/caddy/key.pem
+
+    log {
+        output stderr
+        format console
+    }
+
+    header {
+        X-Upstream "{$DOMAIN_NAME}"
+    }
+
+    handle @allowed_ip {
+        reverse_proxy https://nyaa.si {
+            header_up Host nyaa.si
+            header_up User-Agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) App>
+            header_up Accept-Encoding identity
+        }
+    }
+    handle {
+        respond "Nope" 403
+    }
+}
