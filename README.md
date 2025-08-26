@@ -22,6 +22,14 @@ CADDY_1=192.0.2.45
 CADDY_2=198.51.100.77
 ```
 
+#### Allow `sockets/` to be writable
+
+I'm gonna try to come up with a better solution for this later.
+
+```shell
+chmod 777 sockets
+```
+
 #### Build and start the container
 
 ```shell
