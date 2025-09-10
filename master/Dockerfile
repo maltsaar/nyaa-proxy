@@ -2,7 +2,7 @@ FROM nginx:stable-alpine
 
 RUN apk add --no-cache build-base pcre-dev zlib-dev openssl-dev git cargo clang-dev
 
-RUN git clone --branch master --depth 1 https://github.com/maltsaar/nginx.git /tmp/nginx-src
+RUN git clone --branch master --depth 1 https://github.com/nginx/nginx.git /tmp/nginx-src
 RUN git clone --branch main --depth 1 https://github.com/nginx/nginx-acme.git /tmp/nginx-acme-src
 
 WORKDIR /tmp/nginx-src
